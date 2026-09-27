@@ -1,0 +1,18 @@
+{
+  "name": "json-schema-migration-planner",
+  "version": "1.0.0",
+  "description": "本地 JSON Schema 兼容性迁移规划器：解析本地 $ref，递归比对差异，按读取方/写入方策略分类并生成有序迁移清单",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test/generate.test.js && node test/verify.test.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "ajv": "^8.20.0",
+    "express": "^4.22.3"
+  }
+}

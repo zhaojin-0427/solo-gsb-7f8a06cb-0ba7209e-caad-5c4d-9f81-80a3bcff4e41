@@ -1,0 +1,13 @@
+services:
+  schema-planner:
+    build: .
+    image: json-schema-migration-planner:latest
+    container_name: json-schema-migration-planner
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

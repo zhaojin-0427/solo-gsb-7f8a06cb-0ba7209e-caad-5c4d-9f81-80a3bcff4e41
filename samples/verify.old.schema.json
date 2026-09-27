@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "User (v1 当前版本)",
+  "type": "object",
+  "required": ["id", "name", "age", "role", "meta"],
+  "additionalProperties": false,
+  "properties": {
+    "id": { "type": "integer", "minimum": 1 },
+    "name": { "type": "string", "minLength": 1 },
+    "age": { "type": "integer", "minimum": 0, "maximum": 150 },
+    "email": { "type": "string" },
+    "role": { "enum": ["user", "admin"] },
+    "score": { "type": "integer", "minimum": 0 },
+    "meta": { "$ref": "#/definitions/Meta" }
+  },
+  "definitions": {
+    "Meta": {
+      "type": "object",
+      "required": ["a/b"],
+      "additionalProperties": false,
+      "properties": {
+        "a/b": { "type": "string" },
+        "x~y": { "type": "integer" }
+      }
+    }
+  }
+}

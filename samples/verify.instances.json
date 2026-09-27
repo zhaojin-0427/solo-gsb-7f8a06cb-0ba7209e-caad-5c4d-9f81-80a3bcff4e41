@@ -1,0 +1,82 @@
+[
+  {
+    "id": 1,
+    "name": "Alice",
+    "age": 30,
+    "email": "alice@example.com",
+    "role": "user",
+    "score": 80,
+    "meta": { "a/b": "ok", "x~y": 1 }
+  },
+  {
+    "id": 2,
+    "name": "Bob",
+    "age": 25,
+    "role": "admin",
+    "meta": { "a/b": "ok", "x~y": 2 }
+  },
+  {
+    "id": 3,
+    "name": "Carol",
+    "age": 28,
+    "email": "carol@example.com",
+    "role": "guest",
+    "meta": { "a/b": "x", "x~y": 3 }
+  },
+  {
+    "id": 4,
+    "name": "Dan",
+    "age": "oops",
+    "role": "ghost",
+    "meta": {}
+  },
+  {
+    "id": 5,
+    "name": "Eve",
+    "age": 40,
+    "role": "user",
+    "score": 10,
+    "meta": { "a/b": "y", "x~y": 5 }
+  },
+  {
+    "id": 6,
+    "name": "Frank",
+    "age": 200,
+    "email": "frank@example.com",
+    "role": "user",
+    "meta": { "a/b": "z", "x~y": 6 }
+  },
+  {
+    "id": 7,
+    "name": "Gina",
+    "age": 33,
+    "role": "admin",
+    "meta": { "a/b": "w" }
+  },
+  {
+    "id": 8,
+    "name": "Henry",
+    "age": 50,
+    "email": "henry@example.com",
+    "role": "guest",
+    "score": 60,
+    "meta": { "a/b": "q", "x~y": 8 }
+  },
+  {
+    "id": 9,
+    "name": "Ivy",
+    "age": 22,
+    "email": "ivy@example.com",
+    "role": "user",
+    "meta": { "a/b": "p", "x~y": 9 },
+    "extra": 1
+  },
+  {
+    "id": 10,
+    "name": "",
+    "age": 20,
+    "email": "jack@example.com",
+    "role": "user",
+    "meta": { "a/b": 1, "x~y": "bad" }
+  }
+]

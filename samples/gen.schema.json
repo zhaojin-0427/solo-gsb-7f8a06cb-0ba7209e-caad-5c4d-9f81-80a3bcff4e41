@@ -1,0 +1,53 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Invoice（样本生成示例，仅使用生成器支持的关键字）",
+  "type": "object",
+  "required": ["invoiceId", "buyer", "lines", "tenant", "active"],
+  "properties": {
+    "invoiceId": { "type": "string", "minLength": 8, "description": "字符串 minLength 会用 a 补足" },
+    "buyer": { "$ref": "#/definitions/Customer" },
+    "lines": {
+      "type": "array",
+      "minItems": 2,
+      "items": { "$ref": "#/definitions/Line" },
+      "description": "数组按 minItems 生成最少元素"
+    },
+    "tenant": { "enum": ["self", "team", "enterprise"], "description": "enum 按数组顺序取第一个可取值" },
+    "active": { "type": "boolean" },
+    "remark": { "type": "string", "description": "选填字段不会展开" },
+    "priority": { "type": "integer", "minimum": 1, "maximum": 5, "description": "选填不生成" }
+  },
+  "definitions": {
+    "Customer": {
+      "type": "object",
+      "required": ["id", "name", "address", "vip"],
+      "properties": {
+        "id": { "type": "integer", "minimum": -5, "maximum": 100, "description": "取范围内最接近零的值" },
+        "name": { "type": "string", "minLength": 3 },
+        "address": { "$ref": "#/definitions/Address" },
+        "vip": { "type": "boolean" },
+        "friends": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/Customer" },
+          "description": "可选自引用：未列入 required，不会展开"
+        }
+      }
+    },
+    "Address": {
+      "type": "object",
+      "required": ["city", "primary"],
+      "properties": {
+        "city": { "type": "string" },
+        "primary": true
+      }
+    },
+    "Line": {
+      "type": "object",
+      "required": ["sku", "qty"],
+      "properties": {
+        "sku": { "type": "string", "minLength": 6 },
+        "qty": { "type": "integer", "minimum": 1, "maximum": 9 }
+      }
+    }
+  }
+}

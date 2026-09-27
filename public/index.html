@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>JSON Schema 兼容性迁移规划器</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <h1>JSON Schema 兼容性迁移规划器</h1>
+    <p class="subtitle">解析本地 <code>$ref</code> · 递归比对差异 · 读取方 / 写入方双策略 · 生成有序迁移清单</p>
+  </header>
+
+  <main class="container">
+    <!-- 输入区 -->
+    <section class="card input-card">
+      <div class="input-grid">
+        <div class="pane">
+          <div class="pane-head">
+            <h2>旧 Schema（当前版本）</h2>
+            <div class="pane-actions">
+              <label class="btn tiny">
+                上传文件
+                <input type="file" accept=".json,application/json" data-target="oldInput" hidden />
+              </label>
+              <button class="btn tiny ghost" data-clear="oldInput">清空</button>
+            </div>
+          </div>
+          <textarea id="oldInput" spellcheck="false" placeholder='粘贴旧版本 JSON Schema，例如 { "type": "object", ... }'></textarea>
+        </div>
+
+        <div class="pane">
+          <div class="pane-head">
+            <h2>新 Schema（目标版本）</h2>
+            <div class="pane-actions">
+              <label class="btn tiny">
+                上传文件
+                <input type="file" accept=".json,application/json" data-target="newInput" hidden />
+              </label>
+              <button class="btn tiny ghost" data-clear="newInput">清空</button>
+            </div>
+          </div>
+          <textarea id="newInput" spellcheck="false" placeholder="粘贴新版本 JSON Schema"></textarea>
+        </div>
+      </div>
+
+      <div class="control-row">
+        <div class="strategy" role="tablist">
+          <span class="strategy-label">兼容策略：</span>
+          <button id="strategyReader" class="seg active" data-strategy="reader" role="tab" aria-selected="true">
+            读取方兼容 <small>消费方先行 · Backward</small>
+          </button>
+          <button id="strategyWriter" class="seg" data-strategy="writer" role="tab" aria-selected="false">
+            写入方兼容 <small>生产方先行 · Forward</small>
+          </button>
+        </div>
+        <div class="action-row">
+          <button id="sampleBtn" class="btn ghost">载入示例</button>
+          <button id="compareBtn" class="btn primary">开始比对</button>
+        </div>
+      </div>
+      <div id="errorBox" class="error-box" hidden></div>
+    </section>
+
+    <!-- 有效样本生成 -->
+    <section class="card gen-card">
+      <div class="gen-head">
+        <h2>有效样本生成（接口联调）</h2>
+        <p class="gen-desc">
+          从当前旧 / 新 Schema 中选一份，生成一个最小合法 JSON 实例：对象只填必填字段、数组取最少元素、
+          字符串用 <code>a</code> 补足长度、整数取范围内最接近零的值、<code>enum</code> 按顺序尝试。
+          结果经 Ajv（draft-07）复验通过后才显示。
+        </p>
+      </div>
+      <div class="gen-controls">
+        <div class="gen-side" role="radiogroup" aria-label="选择生成样本所用的 Schema">
+          <label class="gen-radio"><input type="radio" name="genSide" value="old" checked /> 基于旧 Schema</label>
+          <label class="gen-radio"><input type="radio" name="genSide" value="new" /> 基于新 Schema</label>
+        </div>
+        <div class="action-row">
+          <button id="genSampleBtn" class="btn ghost" type="button" title="把一份覆盖全部支持特性的示例 Schema 载入当前所选输入框">载入生成示例</button>
+          <button id="genBtn" class="btn primary" type="button">生成有效样本</button>
+        </div>
+      </div>
+      <div id="genErrorBox" class="error-box gen-error" hidden></div>
+      <div id="genResult" class="gen-result" hidden>
+        <div class="gen-result-head">
+          <span id="genMeta" class="gen-meta"></span>
+          <button id="copyGenBtn" class="btn tiny" type="button">复制 JSON</button>
+        </div>
+        <pre id="genOutput" class="gen-output"></pre>
+      </div>
+    </section>
+
+    <!-- 存量实例迁移核验 -->
+    <section class="card verify-card">
+      <div class="gen-head">
+        <h2>存量实例迁移核验</h2>
+        <p class="gen-desc">
+          粘贴一个由存量 JSON 实例组成的数组（最多 100 条），服务端用 Ajv（draft-07）分别按当前旧、新两份
+          Schema 逐条校验，按「新旧均通过 / 仅旧版通过 / 仅新版通过 / 两版均失败」汇总，顺序与输入一致。
+          <strong>「仅旧版通过」即升级后会被新版拒收的存量数据</strong>。错误位置使用 JSON Pointer，
+          缺失必填项与多余属性定位到具体字段；仅解析文档内本地 <code>$ref</code>，不会获取远程引用。
+        </p>
+      </div>
+      <textarea id="verifyInput" spellcheck="false" placeholder='粘贴 JSON 实例数组，例如：[ { "id": 1, ... }, { "id": 2, ... } ]，最多 100 条'></textarea>
+      <div class="gen-controls">
+        <span class="gen-desc" id="verifyCount"></span>
+        <div class="action-row">
+          <button id="verifySampleBtn" class="btn ghost" type="button">载入核验示例</button>
+          <button id="verifyClearBtn" class="btn ghost" type="button">清空实例</button>
+          <button id="verifyBtn" class="btn primary" type="button">开始核验</button>
+        </div>
+      </div>
+      <div id="verifyErrorBox" class="error-box gen-error" hidden></div>
+      <div id="verifyResult" class="verify-result" hidden>
+        <div class="verify-summary" id="verifySummary"></div>
+        <div class="verify-filter" id="verifyFilter"></div>
+        <div id="verifyList" class="verify-list"></div>
+      </div>
+    </section>
+
+    <!-- 结果区 -->
+    <section id="resultSection" class="result-grid" hidden>
+      <!-- 概览 -->
+      <div class="card span-all">
+        <div class="summary" id="summary"></div>
+      </div>
+
+      <!-- 路径树 -->
+      <div class="card tree-card">
+        <div class="card-head">
+          <h2>路径树（差异定位）</h2>
+          <div class="legend">
+            <span><i class="dot breaking"></i>破坏</span>
+            <span><i class="dot warning"></i>风险</span>
+            <span><i class="dot safe"></i>兼容</span>
+            <span><i class="dot info"></i>提示</span>
+          </div>
+        </div>
+        <div class="filter-row">
+          <label class="chk"><input type="checkbox" id="onlyImpact" /> 只看当前策略受影响项</label>
+          <button class="btn tiny ghost" id="expandAll">全部展开</button>
+          <button class="btn tiny ghost" id="collapseAll">全部折叠</button>
+        </div>
+        <div id="tree" class="tree"></div>
+      </div>
+
+      <!-- 迁移清单 -->
+      <div class="card plan-card">
+        <div class="card-head">
+          <h2 id="planTitle">有序迁移清单</h2>
+        </div>
+        <div id="planHint" class="plan-hint"></div>
+        <ol id="planList" class="plan-list"></ol>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <span>本地运行，Schema 不会离开你的机器 · 仅支持 JSON Schema draft-07 风格关键字与本地 <code>$ref</code></span>
+  </footer>
+
+  <script src="/app.js"></script>
+</body>
+</html>

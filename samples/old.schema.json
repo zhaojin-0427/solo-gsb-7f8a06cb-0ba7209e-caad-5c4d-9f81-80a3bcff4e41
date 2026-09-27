@@ -1,0 +1,55 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Order (v1)",
+  "type": "object",
+  "required": ["orderId", "customer", "items", "status"],
+  "additionalProperties": false,
+  "properties": {
+    "orderId": { "type": "string", "description": "订单号（旧版为字符串）" },
+    "customer": { "$ref": "#/definitions/Customer" },
+    "items": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/Item" },
+      "minItems": 1
+    },
+    "status": { "enum": ["pending", "paid", "shipped", "cancelled"] },
+    "coupon": { "type": "string", "description": "优惠券码" },
+    "total": { "type": "number", "minimum": 0 },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "memo": { "type": "string", "maxLength": 200 }
+  },
+  "definitions": {
+    "Customer": {
+      "type": "object",
+      "required": ["id", "name"],
+      "properties": {
+        "id": { "type": "integer" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "tier": { "enum": ["free", "pro"] },
+        "address": { "$ref": "#/definitions/Address" },
+        "friends": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/Customer" }
+        }
+      }
+    },
+    "Address": {
+      "type": "object",
+      "required": ["city"],
+      "properties": {
+        "city": { "type": "string" },
+        "zip": { "type": "string", "pattern": "^[0-9]{6}$" }
+      }
+    },
+    "Item": {
+      "type": "object",
+      "required": ["sku", "qty"],
+      "properties": {
+        "sku": { "type": "string" },
+        "qty": { "type": "integer", "minimum": 1, "maximum": 99 },
+        "price": { "type": "number" }
+      }
+    }
+  }
+}
