@@ -7,7 +7,8 @@
 3. 对每处变化分别按 **读取方（Backward，旧消费方读新数据）** 与 **写入方（Forward，旧生产方写新校验）** 两种策略判定破坏等级（破坏 / 风险 / 兼容 / 提示），并在**路径树**中逐条解释原因；
 4. 生成按阶段排序的**有序迁移清单**（Expand-Contract 双发模式）；
 5. **生成有效样本**：任选旧 / 新其中一版 Schema，构造一个可复制的最小合法 JSON 实例（供接口联调），结果经 Ajv（draft-07）复验通过后才显示；
-6. **存量实例迁移核验**：粘贴最多 100 条存量 JSON 实例组成的数组，服务端用 Ajv 分别按当前旧、新 Schema 逐条校验，找出**升级后会被新版拒收的存量数据**。
+6. **存量实例迁移核验**：粘贴最多 100 条存量 JSON 实例组成的数组，服务端用 Ajv 分别按当前旧、新 Schema 逐条校验，找出**升级后会被新版拒收的存量数据**；
+7. **兼容性反例搜索**：无须准备存量数据，服务端依据当前旧、新 Schema 自动搜索一条**旧版接收、新版拒绝**的 JSON 实例（遍历可选字段、枚举后续取值与边界值），最多检查 500 个旧版合法候选，找到即给出可复制实例与新版失败路径；未找到只说明搜索限制，**不宣称兼容**。
 
 所有解析与比对都在本地服务完成，Schema 内容不会上传到任何外部服务。
 
@@ -115,6 +116,28 @@ Schema 编译失败（如 `type` 取值非法）、实例输入不合法（非�
 
 ---
 
+## 兼容性反例搜索（自动复现升级破坏）
+
+输入区下方的「兼容性反例搜索」模块独立于比对功能，**不需要先提供存量数据**：
+
+1. 点「**搜索兼容性反例**」，服务端依据当前旧、新两份 Schema 自动构造候选实例并搜索一条**旧版接收、新版拒绝**的 JSON；
+2. 搜索**不是只检验旧版默认样本**：候选按「基线 → 逐位置单变异（轮询）→ 多位置组合」惰性产出，会遍历：
+   - 对象的**可选字段**（含 / 不含，含旧版允许的额外属性）与必填字段；
+   - `enum` 的**后续取值**（逐个按顺序尝试，如删除的是第 4 个枚举值也能找到）；
+   - 整数的上下界与邻接边界（`minimum`/`maximum`、下界−1、上界+1）；
+   - 字符串 `minLength` 与数组 `minItems` 的边界及邻接长度（空串 / 空数组）；
+3. **最多检查 500 个旧版合法候选**；旧、新 Schema 各由一个**独立 Ajv 实例**编译，每个候选都先用旧版**完整复验**、通过后再用新版**完整复验**，因此找到的反例必然真实成立；
+4. **找到时**：展示可一键复制的实例 JSON，以及新版的失败路径（实例侧 JSON Pointer、中文原因、Schema 侧指针，定位到具体字段）；
+5. **未找到时**：明确提示「**不能据此宣称兼容**」，并给出已检查候选数、是否达到上限提前停止，以及搜索过程中遇到的**范围外断言与对应 Schema 路径**。
+
+**枚举支持的断言**：文档内本地 `$ref`（含引用链；可选路径上的自引用环不展开并注明）、布尔 Schema、单一 `type`、对象 `properties` / `required`、`const` / `enum`、数组单一 `items` 与 `minItems`、字符串 `minLength`、整数 `minimum` / `maximum`，以及 `additionalProperties` 的布尔形式（旧版允许额外字段时会枚举一个额外属性槽）。
+
+**范围外断言**（如 `pattern`、`format`、`multipleOf`、`maxLength` / `maxItems`、`uniqueItems`、类型数组、元组 `items`、`allOf/oneOf/anyOf/not`、`number` 上的数值边界、schema 形式的 `additionalProperties` 等）**不会中止搜索**——候选仍以完整真实 Schema 经双版复验，故找到的反例依旧可靠；但它们会按旧 / 新两侧分别列出关键字与 Schema 路径，未找到反例时作为搜索限制展示。其余停止条件：旧 Schema 根节点恒为 `false`、必填路径上的 `$ref` 环、必填字段无法构造、`enum` 超过 100 个取值、`minItems` 超过 200 等，都会注明对应路径。
+
+外部 `$ref` 在编译前直接报错（不配置任何远程加载器）；Schema 编译失败、Schema 非合法 JSON 返回 `400`。**任一 Schema（旧 / 新）改动后，之前搜到的反例立即清空**，避免误用过期实例。
+
+---
+
 ## 两种兼容策略的含义
 
 | 策略 | 提问 | 典型破坏变化 | 迁移顺序 |
@@ -138,13 +161,14 @@ Schema 编译失败（如 `type` 取值非法）、实例输入不合法（非�
 
 ```
 .
-├── server.js              # Express 入口：静态页 + POST /api/compare + /api/generate + /api/verify + GET /api/sample
+├── server.js              # Express 入口：静态页 + POST /api/compare + /api/generate + /api/counterexample + /api/verify + GET /api/sample
 ├── src
 │   ├── refs.js            # 本地 $ref 解析（JSON Pointer、引用链、循环保护）
 │   ├── compare.js         # 递归差异引擎：reader/writer 双向等级判定
 │   ├── migrate.js         # 两策略 × 三阶段的有序迁移清单生成
 │   ├── tree.js            # findings -> JSON Pointer 路径树（子树最差级别聚合）
 │   ├── generate.js        # 有效样本生成：最小实例构造 + Ajv 复验闸
+│   ├── counterexample.js  # 兼容性反例搜索：受限枚举（可选字段/枚举后续值/边界）+ 双独立 Ajv 完整复验
 │   └── verify.js          # 存量实例核验：Ajv 双版本逐条校验 + 中文错误 / JSON Pointer 归一化
 ├── public
 │   ├── index.html         # 页面结构
@@ -187,6 +211,17 @@ Schema 编译失败（如 `type` 取值非法）、实例输入不合法（非�
 
 `side` 取 `"old"` / `"new"`，从对应输入框的 Schema 生成最小合法实例。成功返回 `instance` 与格式化好的 `instanceText`；失败返回 `400`，`code` 区分原因（`unsupported` 不支持的关键字并附 `problems` 路径明细、`ref_cycle` 必填引用环、`contradiction` 矛盾约束、`unsatisfiable` 无解、`invalid_schema` 非法 Schema、`verify_failed` 复验未过）。
 
+`POST /api/counterexample`
+
+```json
+{
+  "oldSchema": "{ ...JSON 字符串... }",
+  "newSchema": "{ ...JSON 字符串... }"
+}
+```
+
+兼容性反例搜索。成功（无论是否找到）返回 `200`：`found` 为 `true` 时附 `instance` / `instanceText`（可复制）、`newErrors`（新版失败原因，含实例侧 `instancePath`、Schema 侧 `schemaPath`、`keyword` 与中文 `message`）、`newErrorCount`；始终返回 `checked`（已完整复验的旧版合法候选数，上限 500）、`built`、`truncated`（是否提前触顶）、`limitations.old` / `limitations.new`（两侧范围外断言：`schemaPath` + `keyword` + 中文说明）与 `notes`（引用环、恒假根、触顶等搜索备注）。未找到时**不代表兼容**，前端会显式声明搜索边界。Schema 非合法 JSON、外部 `$ref`、Ajv 编译失败返回 `400`（`code` 为 `invalid_schema` 等）。
+
 `POST /api/verify`
 
 ```json
@@ -207,4 +242,5 @@ Schema 编译失败（如 `type` 取值非法）、实例输入不合法（非�
 - 仅解析**本地 `$ref`**；外部引用（`http://...`、相对路径文件）会报错提示先内联；
 - `$ref` 的兄弟关键字按 draft-07 习惯忽略（draft-2019-09 之后允许兄弟关键字，本工具不展开合并）；
 - `allOf / oneOf / anyOf / not` 不做集合论推演，只给出需人工核对的提示条目；
-- 纯语法启发式判定，不能替代完整的 JSON Schema 子包含（subschema containment）证明器。
+- 纯语法启发式判定，不能替代完整的 JSON Schema 子包含（subschema containment）证明器；
+- 兼容性反例搜索是**有界的受限枚举**（500 个旧版合法候选）而非穷尽证明：未找到反例仅代表在支持范围与候选预算内未发现，范围外断言（含 `allOf/oneOf/anyOf/not` 等）会列出 Schema 路径供人工核对，不能据此断言两版 Schema 兼容。

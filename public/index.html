@@ -121,6 +121,29 @@
       </div>
     </section>
 
+    <!-- 兼容性反例搜索 -->
+    <section class="card counter-card">
+      <div class="gen-head">
+        <h2>兼容性反例搜索（自动复现升级破坏）</h2>
+        <p class="gen-desc">
+          不需要先准备存量数据：服务端依据当前<strong>旧</strong>、<strong>新</strong>两份 Schema，自动构造候选实例并搜索一条
+          <strong>旧版接收、新版拒绝</strong>的 JSON。会遍历可选字段（含 / 不含）、<code>enum</code> 后续取值、
+          整数上下界与字符串 / 数组长度等边界，最多检查 <strong>500</strong> 个旧版合法候选；
+          每个候选都由旧、新两个独立 Ajv（draft-07）实例分别完整复验。
+          支持文档内本地 <code>$ref</code>、布尔 Schema、单一 <code>type</code>、<code>properties</code>/<code>required</code>、
+          <code>const</code>/<code>enum</code>、单一 <code>items</code>/<code>minItems</code>、<code>minLength</code> 与整数上下界。
+        </p>
+      </div>
+      <div class="gen-controls">
+        <span class="gen-desc" id="counterHint"></span>
+        <div class="action-row">
+          <button id="counterBtn" class="btn primary" type="button">搜索兼容性反例</button>
+        </div>
+      </div>
+      <div id="counterErrorBox" class="error-box gen-error" hidden></div>
+      <div id="counterResult" class="counter-result" hidden></div>
+    </section>
+
     <!-- 结果区 -->
     <section id="resultSection" class="result-grid" hidden>
       <!-- 概览 -->

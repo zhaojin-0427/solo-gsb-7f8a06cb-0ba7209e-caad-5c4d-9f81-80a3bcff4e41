@@ -9,6 +9,7 @@ const { buildPlan } = require('./src/migrate');
 const { buildTree } = require('./src/tree');
 const { RefError } = require('./src/refs');
 const { generateInstance, GenerateError } = require('./src/generate');
+const { findCounterexample, CounterexampleError } = require('./src/counterexample');
 const {
   VerifyError,
   parseInstances,
@@ -99,6 +100,26 @@ app.post('/api/generate', (req, res) => {
         instancePath: e.instancePath || '',
         problems: e.problems || null,
       });
+    }
+    if (e instanceof CompareError || e instanceof RefError) {
+      return res.status(400).json({ ok: false, error: e.message });
+    }
+    console.error(e);
+    res.status(500).json({ ok: false, error: '服务器内部错误：' + e.message });
+  }
+});
+
+// 兼容性反例搜索：依据旧、新 Schema 自动找一条「旧版接收、新版拒绝」的实例
+app.post('/api/counterexample', (req, res) => {
+  try {
+    const { oldSchema, newSchema } = req.body || {};
+    const oldRoot = parseSchema(oldSchema, '旧');
+    const newRoot = parseSchema(newSchema, '新');
+    const result = findCounterexample(oldRoot, newRoot);
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    if (e instanceof CounterexampleError) {
+      return res.status(400).json({ ok: false, error: e.message, code: e.code });
     }
     if (e instanceof CompareError || e instanceof RefError) {
       return res.status(400).json({ ok: false, error: e.message });
