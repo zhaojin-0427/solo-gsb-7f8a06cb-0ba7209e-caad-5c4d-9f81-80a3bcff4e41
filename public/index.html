@@ -63,6 +63,30 @@
       <div id="errorBox" class="error-box" hidden></div>
     </section>
 
+    <!-- 兼容性反例搜索 -->
+    <section class="card ce-card">
+      <div class="gen-head">
+        <h2>兼容性反例</h2>
+        <p class="gen-desc">
+          依据当前旧、新两份 Schema，自动搜索一条<strong>旧版校验通过、新版校验拒绝</strong>的 JSON 实例，
+          无需先准备存量数据即可直接复现升级破坏。搜索会遍历对象选填字段、<code>enum</code> 的后续取值与
+          整数 / 字符串 / 数组的边界值；旧、新 Schema 各由独立 Ajv（draft-07）实例编译，每个候选都经两版完整复验，
+          最多检查 <strong>500 个旧版合法候选</strong>。
+        </p>
+      </div>
+      <div class="gen-controls">
+        <span class="gen-desc ce-supported">
+          支持：文档内本地 <code>$ref</code>、布尔 Schema、单一 <code>type</code>、对象 <code>properties</code>/<code>required</code>、
+          <code>const</code>/<code>enum</code>、数组单一 <code>items</code>/<code>minItems</code>、<code>minLength</code>、整数上下界
+        </span>
+        <div class="action-row">
+          <button id="ceBtn" class="btn primary" type="button">搜索兼容性反例</button>
+        </div>
+      </div>
+      <div id="ceErrorBox" class="error-box gen-error" hidden></div>
+      <div id="ceResult" class="ce-result" hidden></div>
+    </section>
+
     <!-- 有效样本生成 -->
     <section class="card gen-card">
       <div class="gen-head">

@@ -169,6 +169,59 @@ textarea:focus { outline: 2px solid rgba(52, 87, 213, .25); border-color: var(--
   white-space: pre;
 }
 
+/* 兼容性反例 */
+.ce-card { margin-bottom: 18px; }
+.ce-supported { max-width: 760px; }
+.ce-result { margin-top: 12px; }
+.ce-found {
+  border: 1px solid #fecdca; border-radius: 8px; background: var(--breaking-bg);
+  padding: 12px 14px;
+}
+.ce-notfound {
+  border: 1px solid var(--border); border-radius: 8px; background: var(--info-bg);
+  padding: 12px 14px;
+}
+.ce-status { font-size: 13.5px; font-weight: 700; margin-bottom: 8px; }
+.ce-found .ce-status { color: var(--breaking); }
+.ce-notfound .ce-status { color: var(--info); }
+.ce-summary { font-size: 12.5px; color: var(--text); margin-bottom: 10px; white-space: pre-wrap; }
+.ce-instance-head {
+  display: flex; justify-content: space-between; align-items: center;
+  gap: 10px; margin-bottom: 6px;
+}
+.ce-instance-title { font-size: 12.5px; font-weight: 600; color: var(--text); }
+.ce-output {
+  margin: 0 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fbfcfe;
+  padding: 12px 14px;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.6;
+  max-height: 360px;
+  overflow: auto;
+  white-space: pre;
+}
+.ce-newerrors-title { font-size: 12.5px; font-weight: 600; margin: 4px 0 6px; color: var(--text); }
+.ce-notes-title { font-size: 12.5px; font-weight: 600; margin: 10px 0 6px; color: var(--text); }
+.ce-notes { list-style: none; margin: 0; padding: 0; }
+.ce-notes li {
+  display: flex; gap: 8px; flex-wrap: wrap;
+  padding: 4px 0; border-top: 1px dashed var(--border); font-size: 12px;
+}
+.ce-side-tag {
+  flex: 0 0 auto; font-weight: 700; border-radius: 4px; padding: 0 6px;
+  background: #eef1f6; color: var(--info);
+}
+.ce-side-tag.old { background: #fdf0e7; color: var(--warning); }
+.ce-side-tag.new { background: #eaf0fd; color: var(--primary-dark); }
+.ce-note-path {
+  font-family: var(--mono); font-size: 11px; color: var(--muted); cursor: help; word-break: break-all;
+}
+.ce-note-msg { color: var(--text); flex: 1 1 100%; min-width: 0; }
+.ce-note-kw { font-family: var(--mono); font-size: 11px; color: #7a4ec3; }
+
 /* 存量实例迁移核验 */
 .verify-card { margin-bottom: 18px; }
 .verify-card textarea { height: 200px; margin-bottom: 10px; }

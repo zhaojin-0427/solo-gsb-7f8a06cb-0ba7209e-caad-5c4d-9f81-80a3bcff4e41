@@ -9,6 +9,7 @@ const state = {
   onlyImpact: false,
   genSide: 'old',     // 'old' | 'new'：样本生成基于哪份 Schema
   genResult: null,    // 最近一次 /api/generate 成功结果
+  ceResult: null,     // 最近一次 /api/counterexample 成功结果
   verifyResult: null, // 最近一次 /api/verify 成功结果
   verifyFilter: 'all',// 结果分类过滤：all | both | oldOnly | newOnly | bothFail
 };
@@ -29,6 +30,7 @@ document.querySelectorAll('input[type="file"]').forEach((input) => {
       $(input.dataset.target).value = reader.result;
       clearGenerated('Schema 已通过文件更新');
       clearVerify('Schema 已通过文件更新');
+      clearCounterexample('Schema 已通过文件更新');
     };
     reader.readAsText(file);
     input.value = ''; // 允许重复选择同一文件
@@ -40,6 +42,7 @@ document.querySelectorAll('[data-clear]').forEach((btn) => {
     $(btn.dataset.clear).value = '';
     clearGenerated('Schema 已清空');
     clearVerify('Schema 已清空');
+    clearCounterexample('Schema 已清空');
   });
 });
 
@@ -52,6 +55,7 @@ $('sampleBtn').addEventListener('click', async () => {
     hideError();
     clearGenerated('已载入比对示例 Schema');
     clearVerify('已载入比对示例 Schema');
+    clearCounterexample('已载入比对示例 Schema');
   } catch (e) {
     showError('示例载入失败：' + e.message);
   }
@@ -62,6 +66,7 @@ $('sampleBtn').addEventListener('click', async () => {
   $(id).addEventListener('input', () => {
     clearGenerated('Schema 已修改');
     clearVerify('Schema 已修改');
+    clearCounterexample('Schema 已修改');
   });
 });
 
@@ -492,6 +497,9 @@ $('verifySampleBtn').addEventListener('click', async () => {
     state.verifyResult = null;
     $('verifyResult').hidden = true;
     hideVerifyError();
+    state.ceResult = null;
+    $('ceResult').hidden = true;
+    hideCeError();
     updateVerifyCount();
   } catch (e) {
     showVerifyError('核验示例载入失败：' + e.message);
@@ -720,6 +728,7 @@ $('genSampleBtn').addEventListener('click', async () => {
     hideGenError();
     clearGenerated('已将生成示例载入' + (state.genSide === 'old' ? '旧' : '新') + ' Schema 输入框');
     clearVerify('已将生成示例载入' + (state.genSide === 'old' ? '旧' : '新') + ' Schema 输入框');
+    clearCounterexample('已将生成示例载入' + (state.genSide === 'old' ? '旧' : '新') + ' Schema 输入框');
   } catch (e) {
     showGenError('示例载入失败：' + e.message);
   }
@@ -800,10 +809,8 @@ function hideGenError() {
   $('genErrorBox').classList.remove('muted-note');
 }
 
-$('copyGenBtn').addEventListener('click', async () => {
-  if (!state.genResult) return;
-  const text = state.genResult.instanceText;
-  const btn = $('copyGenBtn');
+/** 复制文本到剪贴板（含非安全上下文兜底），按按钮反馈结果 */
+async function copyText(text, btn) {
   const done = (ok) => {
     const old = btn.textContent;
     btn.textContent = ok ? '已复制 ✓' : '复制失败';
@@ -827,4 +834,221 @@ $('copyGenBtn').addEventListener('click', async () => {
   } catch (e) {
     done(false);
   }
+}
+
+$('copyGenBtn').addEventListener('click', () => {
+  if (!state.genResult) return;
+  copyText(state.genResult.instanceText, $('copyGenBtn'));
 });
+
+/* ---------------- 兼容性反例搜索 ---------------- */
+
+const CE_NOTE_LABEL = {
+  old: '旧版',
+  new: '新版',
+};
+/** 与后端一致的候选上限（仅用于未找到时的文案） */
+const MAX_CE_CANDIDATES = 500;
+
+$('ceBtn').addEventListener('click', runCounterexample);
+
+async function runCounterexample() {
+  hideCeError();
+  const btn = $('ceBtn');
+  btn.disabled = true;
+  btn.textContent = '搜索中…';
+  try {
+    const resp = await fetch('/api/counterexample', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        oldSchema: $('oldInput').value,
+        newSchema: $('newInput').value,
+      }),
+    });
+    const data = await resp.json();
+    if (!resp.ok || !data.ok) {
+      state.ceResult = null;
+      $('ceResult').hidden = true;
+      showCeError(data.error || '反例搜索失败');
+      return;
+    }
+    state.ceResult = data;
+    renderCounterexample();
+  } catch (e) {
+    showCeError('请求失败：' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '搜索兼容性反例';
+  }
+}
+
+function renderCounterexample() {
+  const data = state.ceResult;
+  const box = $('ceResult');
+  box.innerHTML = '';
+  box.hidden = false;
+
+  if (data.found) {
+    box.appendChild(renderCeFound(data));
+  } else {
+    box.appendChild(renderCeNotFound(data));
+  }
+  if (data.notes && data.notes.length) box.appendChild(renderCeNotes(data.notes));
+}
+
+function renderCeFound(data) {
+  const wrap = document.createElement('div');
+  wrap.className = 'ce-found';
+
+  const status = document.createElement('div');
+  status.className = 'ce-status';
+  status.textContent = '✗ 找到兼容性反例：该实例旧版接收、新版拒绝';
+  wrap.appendChild(status);
+
+  const summary = document.createElement('div');
+  summary.className = 'ce-summary';
+  summary.textContent = data.summary;
+  wrap.appendChild(summary);
+
+  const head = document.createElement('div');
+  head.className = 'ce-instance-head';
+  const title = document.createElement('span');
+  title.className = 'ce-instance-title';
+  title.textContent = '可复制的实例 JSON（可直接拿去复现升级破坏）';
+  const copyBtn = document.createElement('button');
+  copyBtn.className = 'btn tiny';
+  copyBtn.type = 'button';
+  copyBtn.textContent = '复制 JSON';
+  copyBtn.addEventListener('click', () => copyText(data.instanceText, copyBtn));
+  head.appendChild(title);
+  head.appendChild(copyBtn);
+  wrap.appendChild(head);
+
+  const pre = document.createElement('pre');
+  pre.className = 'ce-output';
+  pre.textContent = data.instanceText;
+  wrap.appendChild(pre);
+
+  if (data.newErrors && data.newErrors.length) {
+    const errsTitle = document.createElement('div');
+    errsTitle.className = 'ce-newerrors-title';
+    errsTitle.textContent = '新版失败路径（Ajv draft-07 复验）：';
+    wrap.appendChild(errsTitle);
+
+    const ul = document.createElement('ul');
+    ul.className = 'verify-errors';
+    for (const er of data.newErrors) {
+      const li = document.createElement('li');
+      const loc = document.createElement('span');
+      loc.className = 'verify-ptr';
+      loc.textContent = er.instancePath || '（根节点）';
+      loc.title = '实例 JSON Pointer';
+      const msg = document.createElement('span');
+      msg.className = 'verify-msg';
+      msg.textContent = er.message;
+      li.appendChild(loc);
+      li.appendChild(msg);
+      if (er.schemaPath) {
+        const sp = document.createElement('span');
+        sp.className = 'verify-schema-ptr';
+        sp.textContent = 'schema' + er.schemaPath;
+        sp.title = 'Schema JSON Pointer（关键字位置）';
+        li.appendChild(sp);
+      }
+      ul.appendChild(li);
+    }
+    wrap.appendChild(ul);
+  }
+
+  return wrap;
+}
+
+function renderCeNotFound(data) {
+  const wrap = document.createElement('div');
+  wrap.className = 'ce-notfound';
+
+  const status = document.createElement('div');
+  status.className = 'ce-status';
+  status.textContent = '未找到反例（不等于兼容）';
+  wrap.appendChild(status);
+
+  const summary = document.createElement('div');
+  summary.className = 'ce-summary';
+  summary.textContent = data.summary;
+  wrap.appendChild(summary);
+
+  const meta = document.createElement('div');
+  meta.className = 'ce-summary';
+  meta.textContent =
+    `已复验旧版合法候选 ${data.candidatesChecked} 个（枚举尝试 ${data.candidatesAttempted} 个）；` +
+    (data.truncated
+      ? `达到 ${MAX_CE_CANDIDATES} 个旧版合法候选的检查上限后停止，候选空间未穷尽。`
+      : '支持范围内的候选空间已穷尽。');
+  wrap.appendChild(meta);
+
+  return wrap;
+}
+
+function renderCeNotes(notes) {
+  const frag = document.createDocumentFragment();
+  const title = document.createElement('div');
+  title.className = 'ce-notes-title';
+  title.textContent = '搜索限制与范围外断言（对应候选空间未被枚举，不能据此宣称兼容）：';
+  frag.appendChild(title);
+
+  const ul = document.createElement('ul');
+  ul.className = 'ce-notes';
+  for (const note of notes) {
+    const li = document.createElement('li');
+
+    const tag = document.createElement('span');
+    tag.className = 'ce-side-tag ' + note.side;
+    tag.textContent = CE_NOTE_LABEL[note.side] || note.side;
+    li.appendChild(tag);
+
+    if (note.keyword) {
+      const kw = document.createElement('span');
+      kw.className = 'ce-note-kw';
+      kw.textContent = note.label || note.keyword;
+      li.appendChild(kw);
+    }
+
+    if (note.schemaPath) {
+      const sp = document.createElement('span');
+      sp.className = 'ce-note-path';
+      sp.textContent = '#' + note.schemaPath;
+      sp.title = humanPointer(note.schemaPath);
+      li.appendChild(sp);
+    }
+
+    const msg = document.createElement('span');
+    msg.className = 'ce-note-msg';
+    msg.textContent = note.message;
+    li.appendChild(msg);
+
+    ul.appendChild(li);
+  }
+  frag.appendChild(ul);
+  return frag;
+}
+
+/** 任一 Schema 改变后，之前的反例立即失效 */
+function clearCounterexample(reason) {
+  if (!state.ceResult && $('ceResult').hidden && $('ceErrorBox').hidden) return;
+  state.ceResult = null;
+  $('ceResult').hidden = true;
+  $('ceResult').innerHTML = '';
+  if (reason) showCeError(reason + '，之前的反例搜索结果已清空。', true);
+}
+
+function showCeError(msg, muted) {
+  const box = $('ceErrorBox');
+  box.textContent = msg;
+  box.classList.toggle('muted-note', !!muted);
+  box.hidden = false;
+}
+function hideCeError() {
+  $('ceErrorBox').hidden = true;
+  $('ceErrorBox').classList.remove('muted-note');
+}

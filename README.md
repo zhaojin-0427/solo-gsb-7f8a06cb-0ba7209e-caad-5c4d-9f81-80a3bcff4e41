@@ -7,7 +7,8 @@
 3. 对每处变化分别按 **读取方（Backward，旧消费方读新数据）** 与 **写入方（Forward，旧生产方写新校验）** 两种策略判定破坏等级（破坏 / 风险 / 兼容 / 提示），并在**路径树**中逐条解释原因；
 4. 生成按阶段排序的**有序迁移清单**（Expand-Contract 双发模式）；
 5. **生成有效样本**：任选旧 / 新其中一版 Schema，构造一个可复制的最小合法 JSON 实例（供接口联调），结果经 Ajv（draft-07）复验通过后才显示；
-6. **存量实例迁移核验**：粘贴最多 100 条存量 JSON 实例组成的数组，服务端用 Ajv 分别按当前旧、新 Schema 逐条校验，找出**升级后会被新版拒收的存量数据**。
+6. **存量实例迁移核验**：粘贴最多 100 条存量 JSON 实例组成的数组，服务端用 Ajv 分别按当前旧、新 Schema 逐条校验，找出**升级后会被新版拒收的存量数据**；
+7. **兼容性反例搜索**：依据当前旧、新 Schema 自动搜索一条**旧版接收、新版拒绝**的 JSON 实例，无须先准备存量数据即可直接复现升级破坏。
 
 所有解析与比对都在本地服务完成，Schema 内容不会上传到任何外部服务。
 
@@ -115,6 +116,36 @@ Schema 编译失败（如 `type` 取值非法）、实例输入不合法（非�
 
 ---
 
+## 兼容性反例搜索（自动找出升级破坏）
+
+输入区下方的「兼容性反例」模块直接使用当前旧、新两份 Schema，**不需要先准备存量数据**：
+
+1. 点「**搜索兼容性反例**」，服务端在旧版 Schema 的合法实例空间上做有界枚举，每个候选都用两个**互相独立的 Ajv（draft-07）实例**编译出的旧、新校验器**完整复验**；
+2. 找到时（`found: true`）展示：
+   - 一条**可复制的实例 JSON**（旧版校验通过、新版校验拒绝，可直接拿去复现升级破坏）；
+   - **新版失败路径**：逐条给出实例侧 JSON Pointer（缺失必填 / 多余属性定位到具体字段，字段名按 `~0` / `~1` 转义）、中文原因与 Schema 侧关键字位置；
+   - 搜索过程中的范围限制（若有）。
+3. 未找到时（`found: false`）明确区分两种状态：
+   - `truncated: true`：已达 **500 个旧版合法候选**的检查上限，候选空间未穷尽；
+   - `exhausted: true`：支持范围内的候选空间已枚举完毕；
+   - 两种结论都会附一句「**不是子包含证明，不能据此宣称两版 Schema 兼容**」。
+
+**枚举策略（不是只检验旧版默认样本）**：
+
+- 对象先产出只含 `required` 必填字段的最小实例，随后按「**不填 → 单个选填 → 两个选填 …**」遍历选填字段子集；必填字段自身也会逐一枚举非默认取值（覆盖必填 `enum` 缩值等变化）；
+- `enum` 按数组顺序逐个尝试，明确覆盖**首个默认值之后的后续取值**（单个节点最多 50 个，超出会提示截断）；
+- 整数枚举最接近零的值与 `minimum` / `maximum` **上下界**及附近小值；字符串枚举 `minLength` 边界及其后续长度；数组枚举 `minItems` 边界（含空数组）及其后续长度；
+- 旧版允许附加属性时，额外构造一个「多一个未声明字段」的候选，以发现新版改为 `additionalProperties:false` 或删除属性造成的破坏；
+- 可选递归结构按深度截断（必填展开路径上的 `$ref` 引用环直接报告路径、不展开）。
+
+**支持范围**：文档内本地 `$ref`（引用链 / 自引用）、布尔 Schema、单一 `type`、对象 `properties` / `required`、`const` / `enum`、数组单一 `items` / `minItems`、字符串 `minLength`、整数 `minimum` / `maximum`。
+
+**范围外断言**（`pattern`、`format`、`multipleOf`、`maxLength`、`maxItems`、`uniqueItems`、`type` 类型数组、`items` 元组、`allOf/oneOf/anyOf/not` 等）不参与候选构造，但会**分旧 / 新两侧逐条列出关键字与对应 Schema 路径**。范围外断言的存在只会让「未找到」结论更保守；**找到反例的有效性不受影响**（最终判定永远来自 Ajv 对两版完整 Schema 的复验）。
+
+旧 / 新任一 Schema 编译失败（`invalid_schema`）或含外部 `$ref` 时返回 `400` 与中文错误。**任一 Schema 改动后，已展示的反例与结论立即清空**。
+
+---
+
 ## 两种兼容策略的含义
 
 | 策略 | 提问 | 典型破坏变化 | 迁移顺序 |
@@ -138,18 +169,19 @@ Schema 编译失败（如 `type` 取值非法）、实例输入不合法（非�
 
 ```
 .
-├── server.js              # Express 入口：静态页 + POST /api/compare + /api/generate + /api/verify + GET /api/sample
+├── server.js              # Express 入口：静态页 + POST /api/compare + /api/generate + /api/counterexample + /api/verify + GET /api/sample
 ├── src
 │   ├── refs.js            # 本地 $ref 解析（JSON Pointer、引用链、循环保护）
 │   ├── compare.js         # 递归差异引擎：reader/writer 双向等级判定
 │   ├── migrate.js         # 两策略 × 三阶段的有序迁移清单生成
 │   ├── tree.js            # findings -> JSON Pointer 路径树（子树最差级别聚合）
 │   ├── generate.js        # 有效样本生成：最小实例构造 + Ajv 复验闸
+│   ├── counterexample.js  # 兼容性反例搜索：旧版合法空间有界枚举 + 独立 Ajv 双版本完整复验
 │   └── verify.js          # 存量实例核验：Ajv 双版本逐条校验 + 中文错误 / JSON Pointer 归一化
 ├── public
 │   ├── index.html         # 页面结构
 │   ├── styles.css
-│   └── app.js             # 原生 JS：输入、策略切换、树/清单渲染、样本生成、存量核验（无框架无构建）
+│   └── app.js             # 原生 JS：输入、策略切换、树/清单渲染、样本生成、反例搜索、存量核验（无框架无构建）
 ├── samples
 │   ├── old.schema.json    # 示例旧版（含 $ref、递归 Customer.friends）
 │   ├── new.schema.json
@@ -186,6 +218,26 @@ Schema 编译失败（如 `type` 取值非法）、实例输入不合法（非�
 ```
 
 `side` 取 `"old"` / `"new"`，从对应输入框的 Schema 生成最小合法实例。成功返回 `instance` 与格式化好的 `instanceText`；失败返回 `400`，`code` 区分原因（`unsupported` 不支持的关键字并附 `problems` 路径明细、`ref_cycle` 必填引用环、`contradiction` 矛盾约束、`unsatisfiable` 无解、`invalid_schema` 非法 Schema、`verify_failed` 复验未过）。
+
+`POST /api/counterexample`
+
+```json
+{
+  "oldSchema": "{ ...JSON 字符串... }",
+  "newSchema": "{ ...JSON 字符串... }"
+}
+```
+
+兼容性反例搜索。成功（`200`）返回：
+
+- `found`：是否找到「旧版通过、新版拒绝」的反例；
+- `truncated` / `exhausted`：是否因达到 **500 个旧版合法候选**上限而停止 / 支持范围内候选空间是否已穷尽；
+- `candidatesChecked`（通过旧版复验的候选数，上限 500）与 `candidatesAttempted`（枚举尝试总数，含被旧版拒绝的候选）；
+- 找到时附 `instance` / `instanceText`（可复制实例）与 `newErrors`（新版失败路径：`instancePath`、`schemaPath`、`keyword`、中文 `message`，结构与 `/api/verify` 一致，最多 20 条）；
+- `notes`：搜索限制与范围外断言，每项含 `side`（`old` / `new`）、`keyword`、`schemaPath`、`label`、`message`；
+- `summary`：中文结论（未找到时包含「不能据此宣称兼容」）。
+
+失败返回 `400`，`code` 为 `invalid_schema`（任一 Schema 未通过 Ajv 编译）；外部 `$ref` 在编译前预检拦截。旧、新 Schema 各由独立 Ajv 实例编译，互相不共享 `$id` 命名空间与校验状态。
 
 `POST /api/verify`
 
